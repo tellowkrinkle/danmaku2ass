@@ -56,7 +56,11 @@ def EOFAsNone(function):
 def ProbeCommentFormat(f):
     tmp = f.read(1)
     if tmp == '[':
-        return 'Acfun'
+        tmp = f.read(7)
+        if tmp == "{\"ping\"":
+            return "NicoJSON"
+        else:
+            return 'Acfun'
         # It is unwise to wrap a JSON object in an array!
         # See this: http://haacked.com/archive/2008/11/20/anatomy-of-a-subtle-json-vulnerability.aspx/
         # Do never follow what Acfun developers did!
@@ -118,9 +122,9 @@ def ProbeCommentFormat(f):
 # and CommentFormatMap.
 #
 
+NiconicoColorMap = {'red': 0xff0000, 'pink': 0xff8080, 'orange': 0xffcc00, 'yellow': 0xffff00, 'green': 0x00ff00, 'cyan': 0x00ffff, 'blue': 0x0000ff, 'purple': 0xc000ff, 'black': 0x000000, 'niconicowhite': 0xcccc99, 'white2': 0xcccc99, 'truered': 0xcc0033, 'red2': 0xcc0033, 'passionorange': 0xff6600, 'orange2': 0xff6600, 'madyellow': 0x999900, 'yellow2': 0x999900, 'elementalgreen': 0x00cc66, 'green2': 0x00cc66, 'marineblue': 0x33ffcc, 'blue2': 0x33ffcc, 'nobleviolet': 0x6633cc, 'purple2': 0x6633cc}
 
 def ReadCommentsNiconico(f, fontsize):
-    NiconicoColorMap = {'red': 0xff0000, 'pink': 0xff8080, 'orange': 0xffcc00, 'yellow': 0xffff00, 'green': 0x00ff00, 'cyan': 0x00ffff, 'blue': 0x0000ff, 'purple': 0xc000ff, 'black': 0x000000, 'niconicowhite': 0xcccc99, 'white2': 0xcccc99, 'truered': 0xcc0033, 'red2': 0xcc0033, 'passionorange': 0xff6600, 'orange2': 0xff6600, 'madyellow': 0x999900, 'yellow2': 0x999900, 'elementalgreen': 0x00cc66, 'green2': 0x00cc66, 'marineblue': 0x33ffcc, 'blue2': 0x33ffcc, 'nobleviolet': 0x6633cc, 'purple2': 0x6633cc}
     dom = xml.dom.minidom.parse(f)
     comment_element = dom.getElementsByTagName('chat')
     for comment in comment_element:
@@ -146,6 +150,37 @@ def ReadCommentsNiconico(f, fontsize):
         except (AssertionError, AttributeError, IndexError, TypeError, ValueError):
             logging.warning(_('Invalid comment: %s') % comment.toxml())
             continue
+
+def ReadCommentsNicoJSON(f, fontsize):
+    comment_elements = json.load(f)
+    for comment in comment_elements:
+        entryType = next(iter(comment.keys()))
+        if entryType in ("ping", "thread", "leaf", "global_num_res"):
+            continue
+        elif entryType == "chat":
+            comment = comment["chat"]
+            if "content" not in comment:
+                continue
+            if comment.get("score", 0) < 0:
+                continue
+            c = comment["content"]
+            pos = 0
+            color = 0xffffff
+            size = fontsize
+            for mailstyle in str(comment.get("mail", "")).split():
+                if mailstyle == "ue":
+                    pos = 1
+                elif mailstyle == "shita":
+                    pos = 2
+                elif mailstyle == "big":
+                    size = fontsize * 1.44
+                elif mailstyle == "small":
+                    size = fontsize * 0.64
+                elif mailstyle in NiconicoColorMap:
+                    color = NiconicoColorMap[mailstyle]
+            yield (max(comment["vpos"], 0) * 0.01, comment["date"], comment["no"], c, pos, color, size, (c.count("\n") + 1) * size, CalculateLength(c) * size)
+        else:
+            logging.warning(_('Unknown comment type: %s') % entryType)
 
 
 def ReadCommentsAcfun(f, fontsize):
@@ -244,7 +279,7 @@ def ReadCommentsMioMio(f, fontsize):
             continue
 
 
-CommentFormatMap = {'Niconico': ReadCommentsNiconico, 'Acfun': ReadCommentsAcfun, 'Bilibili': ReadCommentsBilibili, 'Tudou': ReadCommentsTudou, 'Tudou2': ReadCommentsTudou2, 'MioMio': ReadCommentsMioMio}
+CommentFormatMap = {'Niconico': ReadCommentsNiconico, 'NicoJSON': ReadCommentsNicoJSON, 'Acfun': ReadCommentsAcfun, 'Bilibili': ReadCommentsBilibili, 'Tudou': ReadCommentsTudou, 'Tudou2': ReadCommentsTudou2, 'MioMio': ReadCommentsMioMio}
 
 
 def WriteCommentBilibiliPositioned(f, c, width, height, styleid):
